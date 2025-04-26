@@ -1,4 +1,5 @@
 use diesel::prelude::*;
+use diesel::{Queryable, Insertable};
 use serde::{Deserialize, Serialize};
 
 #[derive(Queryable, Deserialize, Serialize)]
@@ -10,11 +11,11 @@ pub struct Task {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = crate::schema::tasks)]
+#[diesel(table_name = tasks)]
 pub struct NewTask<'a> {
     pub title: &'a str,
     pub done: bool,
-    #[sesrde(skip_deserializing)]
+    #[serde(skip_deserializing)]
     pub username: &'a str,
 }
 

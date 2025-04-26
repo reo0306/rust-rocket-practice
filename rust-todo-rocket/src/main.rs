@@ -20,7 +20,7 @@ fn get_tasks(cookies: &CookieJar<'_>) -> Result<Json<Vec<models::Task>>, Status>
     let current_username = match cookies.get("username") {
         Some(cookie) => cookie.value().to_string(),
         None => return Err(Status::Unauthorized)
-    }
+    };
 
     use crate::schema::tasks::dsl::*;
     let mut connection = establish_connection();
@@ -38,7 +38,7 @@ fn create_task(new_task: Json<models::NewTask>, cookies: &CookieJar<'_>) -> Resu
     let current_username = match cookies.get("username") {
         Some(cookie) => cookie.value().to_string(),
         None => return Err(Status::Unauthorized)
-    }
+    };
 
     use crate::schema::tasks::dsl::*;
     let mut connection = establish_connection();
@@ -61,11 +61,11 @@ fn create_task(new_task: Json<models::NewTask>, cookies: &CookieJar<'_>) -> Resu
 }
 
 #[put("/tasks/<task_id>", format = "json", data = "<task_update>")]
-fn update_task(<task_id: i32, task_update: Json<models::NewTask>, cookies: &CookieJar<'_>) -> Result<&'static str, Status> {
+fn update_task(task_id: i32, task_update: Json<models::NewTask>, cookies: &CookieJar<'_>) -> Result<&'static str, Status> {
     let current_username = match cookies.get("username") {
         Some(cookie) => cookie.value().to_string(),
         None => return Err(Status::Unauthorized)
-    }
+    };
 
     use crate::schema::tasks::dsl::*;
     let mut connection = establish_connection();
@@ -100,7 +100,7 @@ fn delete_task(task_id: i32, cookies: &CookieJar<'_>) -> Result<&'static str, St
     let current_username = match cookies.get("username") {
         Some(cookie) => cookie.value().to_string(),
         None => return Err(Status::Unauthorized)
-    }
+    };
 
     use crate::schema::tasks::dsl::*;
     let mut connection = establish_connection();
@@ -125,14 +125,14 @@ fn delete_task(task_id: i32, cookies: &CookieJar<'_>) -> Result<&'static str, St
 
 #[post("/register", format = "json", data = "<user>")]
 fn register(user: Json<models::NewUser>) -> &'static str {
-    use crate::schema::tasks::dsl::*;
+    use crate::schema::users::dsl::*;
     let mut connection = establish_connection();
 
     let hashed_pw = hash::<&str>(user.password, DEFAULT_COST).expect("Failed to hash password");
     let new_user = models::NewUser {
         username: &user.username,
         password: &hashed_pw,
-    }
+    };
 
     match diesel::insert_into(users).values(&new_user).execute(&mut connection) {
         Ok(_) => "User registered successfully",
@@ -140,7 +140,36 @@ fn register(user: Json<models::NewUser>) -> &'static str {
     }
 }
 
+#[post("/login", format = "json", data = "<login_data>")]
+fn login(login_data: Json<models::LoginData>, cookies: &CookieJar<'_>) -> &'static str {
+    use crate::schema::users::dsl::*;
+    let mut connection = establish_connection();
+    let login = login_data.into_inner();
+
+    let result = users.find(&login.username).first::<models::User>(&mut connection);
+    if let Ok(user_record) = result {
+        if verify(&login.password, &user_record.password).unwrap_or(false) {
+            cookies.add(Cookie::new("username", login.username));
+            return "Login successful";
+        }
+    }
+    "Invalid username or password"
+}
+
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/", routes![index])
+    rocket::build().mount("/", routes![
+        serve_index,
+        get_tasks,
+        create_task,
+        update_task,
+        delete_task,
+        register,
+        login,
+    ])
+}
+
+fn establish_connection() -> SqliteConnection {
+    SqliteConnection::establish("./todo.do")
+        .unwrap_or_else(|_| panic!("Error connecting to database"))
 }

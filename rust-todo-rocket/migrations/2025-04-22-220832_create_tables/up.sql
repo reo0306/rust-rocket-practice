@@ -6,3 +6,9 @@ CREATE TABLE tasks (
   username TEXT NOT NULL,
   FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
 );
+
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL,
+  password TEXT NOT NULL,
+);

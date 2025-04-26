@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rust TODO App</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 4px 0; display: flex; align-items: center; }
+    .done { text-decoration: line-through; color: gray; }
+    .auth-container { margin-bottom: 30px; }
+    .auth-form { margin-bottom: 15px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+    .auth-form h2 { margin-top: 0; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; margin-bottom: 5px; }
+    .form-group input { padding: 5px; width: 100%; max-width: 300px; }
+    .btn { padding: 8px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .btn:hover { background: #45a049; }
+    .error { color: red; margin-top: 5px; }
+    .task-actions { margin-left: 10px; }
+    .hidden { display: none; }
+    .main-container { display: none; }
+    .logout-btn { margin-left: 10px; background: #f44336; }
+    .logout-btn:hover { background: #d32f2f; }
+  </style>
+</head>
+<body>
+  <h1>Rust TODOアプリケーション</h1>
+  
+  <div id="auth-container" class="auth-container">
+    <div id="login-form" class="auth-form">
+      <h2>ログイン</h2>
+      <div class="form-group">
+        <label for="login-username">ユーザー名：</label>
+        <input type="text" id="login-username" />
+      </div>
+      <div class="form-group">
+        <label for="login-password">パスワード：</label>
+        <input type="password" id="login-password" />
+      </div>
+      <button id="login-btn" class="btn">ログイン</button>
+      <p id="login-error" class="error hidden"></p>
+      <p>アカウントをお持ちでない方は <a href="#" id="show-register">新規登録</a> へ</p>
+    </div>
+    
+    <div id="register-form" class="auth-form hidden">
+      <h2>新規登録</h2>
+      <div class="form-group">
+        <label for="register-username">ユーザー名：</label>
+        <input type="text" id="register-username" />
+      </div>
+      <div class="form-group">
+        <label for="register-password">パスワード：</label>
+        <input type="password" id="register-password" />
+      </div>
+      <button id="register-btn" class="btn">登録</button>
+      <p id="register-error" class="error hidden"></p>
+      <p>すでにアカウントをお持ちの方は <a href="#" id="show-login">ログイン</a> へ</p>
+    </div>
+  </div>
+  
+  <div id="main-container" class="main-container">
+    <div class="app-header">
+      <span id="welcome-message"></span>
+      <button id="logout-btn" class="btn logout-btn">ログアウト</button>
+    </div>
+    
+    <h2>TODOリスト</h2>
+    <div class="task-input">
+      <input type="text" id="new-task-title" placeholder="新しいタスク..." />
+      <button id="add-task-btn" class="btn">追加</button>
+    </div>
+    <ul id="task-list"></ul>
+  </div>
+
+  <script>
+    // 認証状態をチェック
+    function checkAuth() {
+      const username = getCookie('username');
+      if (username) {
+        document.getElementById('auth-container').style.display = 'none';
+        document.getElementById('main-container').style.display = 'block';
+        document.getElementById('welcome-message').textContent = `${username}さん、こんにちは！`;
+        loadTasks();
+      } else {
+        document.getElementById('auth-container').style.display = 'block';
+        document.getElementById('main-container').style.display = 'none';
+      }
+    }
+    
+    // Cookie の取得
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    
+    // タスクを取得して表示
+    async function loadTasks() {
+      try {
+        const res = await fetch('/tasks');
+        if (res.status === 401) {
+          // 認証エラー
+          document.cookie = 'username=; Max-Age=0';
+          checkAuth();
+          return;
+        }
+        const tasks = await res.json();
+        document.getElementById('task-list').innerHTML = tasks.map(task => 
+          `<li data-id="${task.id}" class="${task.done ? 'done' : ''}">
+            <input type="checkbox" ${task.done ? 'checked' : ''} onchange="toggleTask(${task.id}, this.checked)">
+            <span>${task.title}</span>
+            <div class="task-actions">
+              <button onclick="deleteTask(${task.id})" class="btn">削除</button>
+            </div>
+          </li>`
+        ).join('');
+      } catch (error) {
+        console.error('タスクの読み込みに失敗しました：', error);
+      }
+    }
+    
+    // タスクの完了状態切り替え
+    async function toggleTask(id, done) {
+      try {
+        const taskElement = document.querySelector(`li[data-id="${id}"]`);
+        const title = taskElement.querySelector('span').textContent;
+        
+        await fetch(`/tasks/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, done })
+        });
+        
+        taskElement.classList.toggle('done', done);
+      } catch (error) {
+        console.error('タスク更新に失敗しました：', error);
+      }
+    }
+    
+    // タスク削除
+    async function deleteTask(id) {
+      try {
+        await fetch(`/tasks/${id}`, { method: 'DELETE' });
+        loadTasks();
+      } catch (error) {
+        console.error('タスク削除に失敗しました：', error);
+      }
+    }
+    
+    // ログイン処理
+    async function login() {
+      const username = document.getElementById('login-username').value;
+      const password = document.getElementById('login-password').value;
+      
+      if (!username || !password) {
+        showError('login-error', 'ユーザー名とパスワードを入力してください');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const text = await response.text();
+        
+        if (text === 'Login successful') {
+          checkAuth();
+        } else {
+          showError('login-error', 'ユーザー名またはパスワードが正しくありません');
+        }
+      } catch (error) {
+        showError('login-error', 'ログインに失敗しました');
+        console.error('ログインエラー：', error);
+      }
+    }
+    
+    // 新規登録処理
+    async function register() {
+      const username = document.getElementById('register-username').value;
+      const password = document.getElementById('register-password').value;
+      
+      if (!username || !password) {
+        showError('register-error', 'ユーザー名とパスワードを入力してください');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const text = await response.text();
+        
+        if (text === 'User registered successfully') {
+          showLoginForm();
+          document.getElementById('login-username').value = username;
+          document.getElementById('login-error').textContent = '登録が完了しました。ログインしてください。';
+          document.getElementById('login-error').classList.remove('hidden');
+        } else {
+          showError('register-error', '登録に失敗しました');
+        }
+      } catch (error) {
+        showError('register-error', '登録に失敗しました');
+        console.error('登録エラー：', error);
+      }
+    }
+    
+    // エラーメッセージ表示
+    function showError(elementId, message) {
+      const errorElement = document.getElementById(elementId);
+      errorElement.textContent = message;
+      errorElement.classList.remove('hidden');
+    }
+    
+    // ログインフォーム表示
+    function showLoginForm() {
+      document.getElementById('register-form').classList.add('hidden');
+      document.getElementById('login-form').classList.remove('hidden');
+      document.getElementById('login-error').classList.add('hidden');
+    }
+    
+    // 登録フォーム表示
+    function showRegisterForm() {
+      document.getElementById('login-form').classList.add('hidden');
+      document.getElementById('register-form').classList.remove('hidden');
+      document.getElementById('register-error').classList.add('hidden');
+    }
+    
+    // ログアウト処理
+    function logout() {
+      document.cookie = 'username=; Max-Age=0';
+      checkAuth();
+    }
+    
+    // イベントリスナー設定
+    document.getElementById('show-register').addEventListener('click', function(e) {
+      e.preventDefault();
+      showRegisterForm();
+    });
+    document.getElementById('show-login').addEventListener('click', function(e) {
+      e.preventDefault();
+      showLoginForm();
+    });
+    document.getElementById('login-btn').addEventListener('click', login);
+    document.getElementById('register-btn').addEventListener('click', register);
+    document.getElementById('logout-btn').addEventListener('click', logout);
+    document.getElementById('add-task-btn').addEventListener('click', async () => {
+      const title = document.getElementById('new-task-title').value;
+      if (!title) return;
+      
+      try {
+        await fetch('/tasks', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ title, done: false })
+        });
+        document.getElementById('new-task-title').value = '';
+        loadTasks();
+      } catch (error) {
+        console.error('タスク追加に失敗しました：', error);
+      }
+    });
+    
+    // 初期表示
+    checkAuth();
+  </script>
+</body>
+</html>
